@@ -1,6 +1,6 @@
 {
   "name": "dbs26-server",
-  "version": "2.0.0",
+  "version": "2.8.0",
   "description": "DBS 26 Online Football Game Server",
   "main": "server.js",
   "scripts": {
