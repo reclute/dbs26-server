@@ -3,6 +3,9 @@ const http = require('http');
 const socketIO = require('socket.io');
 const path = require('path');
 
+// DBS 26 Server v2.8.0
+console.log('🚀 DBS 26 Server v2.8.0 starting...');
+
 // 🛡️ SECURITY MODULES (Optional - graceful fallback if not installed)
 let rateLimit, helmet;
 try {
