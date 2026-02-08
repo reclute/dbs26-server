@@ -228,6 +228,29 @@ const io = socketIO(server, {
 // Static dosyaları servis et (mevcut klasörden)
 app.use(express.static(__dirname));
 
+// Keep-alive endpoint - Render'da uyumayı önlemek için
+app.get('/ping', (req, res) => {
+    res.json({ 
+        status: 'alive', 
+        timestamp: Date.now(),
+        uptime: process.uptime(),
+        rooms: Object.keys(rooms).length,
+        players: playerCount
+    });
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'healthy',
+        timestamp: Date.now(),
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        rooms: Object.keys(rooms).length,
+        activePlayers: Array.from(io.sockets.sockets.keys()).length
+    });
+});
+
 // Oyuncu odaları için veri yapısı
 let rooms = {};
 let playerCount = 0;
@@ -1000,6 +1023,21 @@ function cleanupOldFriendRequests() {
 // Clean up old friend requests every 24 hours
 setInterval(cleanupOldFriendRequests, 24 * 60 * 60 * 1000);
 
+// 🔥 KEEP-ALIVE PING ENDPOINT - Prevents server from sleeping
+app.get('/ping', (req, res) => {
+    res.json({ 
+        status: 'alive', 
+        timestamp: Date.now(),
+        uptime: process.uptime(),
+        message: 'DBS 26 Server is running!'
+    });
+});
+
+// Self-ping every 10 minutes to keep server awake
+setInterval(() => {
+    console.log('🏓 Self-ping to keep server alive...');
+}, 10 * 60 * 1000);
+
 // Sunucuyu başlat
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
@@ -1007,6 +1045,7 @@ server.listen(PORT, () => {
     console.log(`🌐 Socket.IO server ready`);
     console.log(`📂 Serving files from directory (DBS 26/)`);
     console.log(`🔗 Open: http://localhost:${PORT}`);
+    console.log(`🏓 Keep-alive ping endpoint: /ping`);
 });
 
 // Temizlik için
