@@ -228,9 +228,9 @@ const io = socketIO(server, {
 // Static dosyaları servis et (mevcut klasörden)
 app.use(express.static(__dirname));
 
-// Keep-alive endpoint - Render'da uyumayı önlemek için
-app.get('/ping', (req, res) => {
-    res.json({ 
+// Keep-alive endpoint - Render'ın sunucuyu uyutmaması için
+app.get('/keep-alive', (req, res) => {
+    res.status(200).json({ 
         status: 'alive', 
         timestamp: Date.now(),
         uptime: process.uptime(),
@@ -239,15 +239,17 @@ app.get('/ping', (req, res) => {
     });
 });
 
+// Ping endpoint - basit health check
+app.get('/ping', (req, res) => {
+    res.status(200).send('pong');
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
-    res.json({
+    res.status(200).json({ 
         status: 'healthy',
-        timestamp: Date.now(),
-        uptime: process.uptime(),
-        memory: process.memoryUsage(),
-        rooms: Object.keys(rooms).length,
-        activePlayers: Array.from(io.sockets.sockets.keys()).length
+        version: '2.8.0',
+        timestamp: Date.now()
     });
 });
 
@@ -1023,20 +1025,46 @@ function cleanupOldFriendRequests() {
 // Clean up old friend requests every 24 hours
 setInterval(cleanupOldFriendRequests, 24 * 60 * 60 * 1000);
 
-// 🔥 KEEP-ALIVE PING ENDPOINT - Prevents server from sleeping
+// ⚡ KEEP-ALIVE ENDPOINT - Render.com için 15dk uyuma sorunu çözümü
 app.get('/ping', (req, res) => {
-    res.json({ 
+    res.status(200).json({ 
         status: 'alive', 
         timestamp: Date.now(),
         uptime: process.uptime(),
-        message: 'DBS 26 Server is running!'
+        rooms: Object.keys(rooms).length,
+        players: playerCount
+    });
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.status(200).json({ 
+        status: 'healthy',
+        server: 'DBS 26 v2.8.0',
+        timestamp: Date.now()
     });
 });
 
 // Self-ping every 10 minutes to keep server awake
 setInterval(() => {
-    console.log('🏓 Self-ping to keep server alive...');
-}, 10 * 60 * 1000);
+    const http = require('http');
+    const options = {
+        hostname: 'localhost',
+        port: PORT,
+        path: '/ping',
+        method: 'GET'
+    };
+    
+    const req = http.request(options, (res) => {
+        console.log(`⚡ Keep-alive ping: ${res.statusCode}`);
+    });
+    
+    req.on('error', (error) => {
+        console.error('⚠️ Keep-alive ping error:', error.message);
+    });
+    
+    req.end();
+}, 10 * 60 * 1000); // Her 10 dakikada bir
 
 // Sunucuyu başlat
 const PORT = process.env.PORT || 3000;
@@ -1045,7 +1073,7 @@ server.listen(PORT, () => {
     console.log(`🌐 Socket.IO server ready`);
     console.log(`📂 Serving files from directory (DBS 26/)`);
     console.log(`🔗 Open: http://localhost:${PORT}`);
-    console.log(`🏓 Keep-alive ping endpoint: /ping`);
+    console.log(`⚡ Keep-alive system active (ping every 10 minutes)`);
 });
 
 // Temizlik için
