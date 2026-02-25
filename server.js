@@ -3,8 +3,9 @@ const http = require('http');
 const socketIO = require('socket.io');
 const path = require('path');
 
-// DBS 26 Server v2.9.0
-console.log('🚀 DBS 26 Server v2.9.0 starting...');
+// DBS 26 Server v3.0.0 - SECURITY HARDENED
+console.log('🚀 DBS 26 Server v3.0.0 starting...');
+console.log('🛡️ Security mode: ENABLED');
 
 // 🛡️ SECURITY MODULES (Optional - graceful fallback if not installed)
 let rateLimit, helmet;
@@ -30,13 +31,63 @@ const limiter = rateLimit ? rateLimit({
     legacyHeaders: false,
 }) : null;
 
-// 🛡️ ANTI-CHEAT & SECURITY MANAGER
+// 🛡️ ANTI-CHEAT & SECURITY MANAGER - HARDENED v3.0
 class SecurityManager {
     constructor() {
         this.suspiciousActivities = new Map();
         this.rateLimits = new Map();
         this.blockedIPs = new Set();
         this.playerValidation = new Map();
+        this.ipConnectionCount = new Map(); // Track connections per IP
+        this.globalRateLimit = new Map(); // Global rate limiting
+    }
+    
+    // 🛡️ NEW: IP-based protection
+    checkIPConnection(ip, maxConnections = 3) {
+        const now = Date.now();
+        
+        if (!this.ipConnectionCount.has(ip)) {
+            this.ipConnectionCount.set(ip, []);
+        }
+        
+        const connections = this.ipConnectionCount.get(ip);
+        connections.push(now);
+        
+        // Clean old connections (5 minutes)
+        const filtered = connections.filter(t => now - t < 300000);
+        this.ipConnectionCount.set(ip, filtered);
+        
+        if (filtered.length > maxConnections) {
+            this.blockedIPs.add(ip);
+            console.warn(`🚨 IP BLOCKED (too many connections): ${ip.split('.').slice(0, 2).join('.')}.***.***`);
+            return false;
+        }
+        
+        return true;
+    }
+    
+    // 🛡️ NEW: Global rate limiting (all events)
+    checkGlobalRateLimit(socketId, maxPerSecond = 50) {
+        const now = Date.now();
+        const key = `global_${socketId}`;
+        
+        if (!this.globalRateLimit.has(key)) {
+            this.globalRateLimit.set(key, []);
+        }
+        
+        const timestamps = this.globalRateLimit.get(key);
+        timestamps.push(now);
+        
+        // Clean old timestamps (1 second)
+        const filtered = timestamps.filter(t => now - t < 1000);
+        this.globalRateLimit.set(key, filtered);
+        
+        if (filtered.length > maxPerSecond) {
+            this.logSuspiciousActivity(socketId, 'GLOBAL_RATE_LIMIT', { count: filtered.length });
+            return false;
+        }
+        
+        return true;
     }
     
     // Rate limiting per socket
@@ -125,7 +176,7 @@ class SecurityManager {
             activities.splice(0, activities.length - 50);
         }
         
-        console.warn(`🚨 SECURITY ALERT [${socketId}]: ${type}`, data);
+        console.warn(`🚨 SECURITY ALERT [${socketId.slice(0, 8)}***]: ${type}`);
         
         // Auto-block after too many suspicious activities
         if (activities.length > 10) {
@@ -139,12 +190,12 @@ class SecurityManager {
     // Block suspicious socket
     blockSocket(socketId) {
         this.blockedIPs.add(socketId);
-        console.warn(`🚨 SOCKET BLOCKED: ${socketId}`);
+        console.log(`🚨 SOCKET BLOCKED: ${socketId.slice(0, 8)}***`);
         
         // Auto-unblock after 10 minutes
         setTimeout(() => {
             this.blockedIPs.delete(socketId);
-            console.log(`✅ Socket unblocked: ${socketId}`);
+            console.log(`✅ Socket unblocked: ${socketId.slice(0, 8)}***`);
         }, 10 * 60 * 1000);
     }
     
@@ -214,7 +265,7 @@ app.use((req, res, next) => {
 const server = http.createServer(app);
 const io = socketIO(server, {
     cors: {
-        origin: "*",
+        origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ["*"],
         methods: ["GET", "POST"],
         credentials: false
     },
@@ -222,20 +273,18 @@ const io = socketIO(server, {
     allowEIO3: false,
     transports: ['websocket', 'polling'],
     pingTimeout: 60000,
-    pingInterval: 25000
+    pingInterval: 25000,
+    // 🛡️ Max HTTP request body size
+    maxHttpBufferSize: 1e5 // 100KB max
 });
 
 // Static dosyaları servis et (mevcut klasörden)
 app.use(express.static(__dirname));
 
-// Keep-alive endpoint - Render'ın sunucuyu uyutmaması için
+// Keep-alive endpoint - MINIMAL INFO
 app.get('/keep-alive', (req, res) => {
     res.status(200).json({ 
-        status: 'alive', 
-        timestamp: Date.now(),
-        uptime: process.uptime(),
-        rooms: Object.keys(rooms).length,
-        players: playerCount
+        status: 'alive'
     });
 });
 
@@ -244,12 +293,11 @@ app.get('/ping', (req, res) => {
     res.status(200).send('pong');
 });
 
-// Health check endpoint
+// Health check endpoint - MINIMAL INFO
 app.get('/health', (req, res) => {
     res.status(200).json({ 
-        status: 'healthy',
-        version: '2.9.0',
-        timestamp: Date.now()
+        status: 'ok',
+        version: '3.0.0'
     });
 });
 
@@ -309,18 +357,33 @@ function secureSocketHandler(socket, eventName, handler, rateLimit = 20) {
 // Socket.IO bağlantısı
 io.on('connection', (socket) => {
     const playerId = ++playerCount;
-    console.log(`Player ${playerId} connected (${socket.id})`);
+    const shortId = socket.id.slice(0, 8) + '***';
+    console.log(`Player ${playerId} connected (${shortId})`);
 
     socket.playerId = playerId;
     socket.playerName = null;
     
-    // 🛡️ Connection security check
+    // 🛡️ Connection security check - IP MASKED FOR PRIVACY
     const clientIP = socket.handshake.address;
-    console.log(`🔍 Connection from IP: ${clientIP}`);
+    const maskedIP = clientIP.split('.').slice(0, 2).join('.') + '.***.***';
+    console.log(`🔍 Connection from: ${maskedIP}`);
+    
+    // 🛡️ NEW: Check if IP is blocked
+    if (securityManager.blockedIPs.has(clientIP)) {
+        console.warn(`🚨 Blocked IP attempted connection: ${maskedIP}`);
+        socket.disconnect(true);
+        return;
+    }
+    
+    // 🛡️ NEW: IP-based connection limiting
+    if (!securityManager.checkIPConnection(clientIP, 3)) {
+        socket.disconnect(true);
+        return;
+    }
     
     // Track connection attempts per IP
     if (!securityManager.checkRateLimit(clientIP, 'connection', 5)) {
-        console.warn(`🚨 Too many connections from IP: ${clientIP}`);
+        console.warn(`🚨 Too many connections from: ${maskedIP}`);
         socket.disconnect(true);
         return;
     }
@@ -365,7 +428,7 @@ io.on('connection', (socket) => {
         socket.emit('room_created', { roomId, room: roomData });
         broadcastRoomList();
 
-        console.log(`Room created: ${roomId} by ${data.playerName}`);
+        console.log(`Room created: ${roomId.slice(0, 15)}*** by ${data.playerName}`);
     }, 2); // Max 2 room creations per minute
 
     // Oda listesini al
@@ -1025,24 +1088,9 @@ function cleanupOldFriendRequests() {
 // Clean up old friend requests every 24 hours
 setInterval(cleanupOldFriendRequests, 24 * 60 * 60 * 1000);
 
-// ⚡ KEEP-ALIVE ENDPOINT - Render.com için 15dk uyuma sorunu çözümü
+// ⚡ KEEP-ALIVE ENDPOINT - Minimal info for security
 app.get('/ping', (req, res) => {
-    res.status(200).json({ 
-        status: 'alive', 
-        timestamp: Date.now(),
-        uptime: process.uptime(),
-        rooms: Object.keys(rooms).length,
-        players: playerCount
-    });
-});
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-    res.status(200).json({ 
-        status: 'healthy',
-        server: 'DBS 26 v2.8.0',
-        timestamp: Date.now()
-    });
+    res.status(200).json({ status: 'alive' });
 });
 
 // Self-ping every 10 minutes to keep server awake
@@ -1069,11 +1117,8 @@ setInterval(() => {
 // Sunucuyu başlat
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`🎮 DBS 26 (Dimension Ball Soccer) Online Server running on port ${PORT}`);
-    console.log(`🌐 Socket.IO server ready`);
-    console.log(`📂 Serving files from directory (DBS 26/)`);
-    console.log(`🔗 Open: http://localhost:${PORT}`);
-    console.log(`⚡ Keep-alive system active (ping every 10 minutes)`);
+    console.log(`🎮 DBS 26 Server v3.0.0 running`);
+    console.log(`�️ Security hardened mode active`);
 });
 
 // Temizlik için
