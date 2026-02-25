@@ -3,8 +3,8 @@ const http = require('http');
 const socketIO = require('socket.io');
 const path = require('path');
 
-// DBS 26 Server v2.8.0
-console.log('🚀 DBS 26 Server v2.8.0 starting...');
+// DBS 26 Server v2.9.0
+console.log('🚀 DBS 26 Server v2.9.0 starting...');
 
 // 🛡️ SECURITY MODULES (Optional - graceful fallback if not installed)
 let rateLimit, helmet;
@@ -248,7 +248,7 @@ app.get('/ping', (req, res) => {
 app.get('/health', (req, res) => {
     res.status(200).json({ 
         status: 'healthy',
-        version: '2.8.0',
+        version: '2.9.0',
         timestamp: Date.now()
     });
 });
