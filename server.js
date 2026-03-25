@@ -233,9 +233,6 @@ const securityManager = new SecurityManager();
 // Express app oluştur
 const app = express();
 
-// 🛡️ Trust proxy for Render deployment (required for rate-limit to work correctly)
-app.set('trust proxy', 1);
-
 // 🛡️ Apply security middleware (if available)
 if (helmet) {
     app.use(helmet({
