@@ -305,8 +305,39 @@ app.get('/health', (req, res) => {
 let rooms = {};
 let playerCount = 0;
 
-// Online leaderboard - oyuncu istatistikleri
+// Online leaderboard - oyuncu istatistikleri (PERSISTENT)
 let onlineLeaderboard = {}; // { playerName: { wins: 0, losses: 0, goals: 0, goalsAgainst: 0 } }
+
+// 📁 Load leaderboard from file on startup
+const fs = require('fs');
+const LEADERBOARD_FILE = path.join(__dirname, 'leaderboard.json');
+
+function loadLeaderboard() {
+    try {
+        if (fs.existsSync(LEADERBOARD_FILE)) {
+            const data = fs.readFileSync(LEADERBOARD_FILE, 'utf8');
+            onlineLeaderboard = JSON.parse(data);
+            console.log(`✅ Leaderboard loaded: ${Object.keys(onlineLeaderboard).length} players`);
+        }
+    } catch (e) {
+        console.log('⚠️ Could not load leaderboard, starting fresh');
+        onlineLeaderboard = {};
+    }
+}
+
+function saveLeaderboard() {
+    try {
+        fs.writeFileSync(LEADERBOARD_FILE, JSON.stringify(onlineLeaderboard, null, 2));
+    } catch (e) {
+        console.error('❌ Failed to save leaderboard:', e.message);
+    }
+}
+
+// Load leaderboard on startup
+loadLeaderboard();
+
+// Save leaderboard every 30 seconds
+setInterval(saveLeaderboard, 30000);
 
 // Registered players and pending friend requests
 let registeredPlayers = new Set(); // Players who have played at least once
@@ -785,6 +816,9 @@ io.on('connection', (socket) => {
         }
 
         console.log(`📊 Offline match result: ${playerName} - ${data.playerScore}:${data.aiScore} (${data.won ? 'WIN' : data.lost ? 'LOSS' : 'DRAW'})`);
+        
+        // Save leaderboard after each match
+        saveLeaderboard();
     });
 
     // Leaderboard al
